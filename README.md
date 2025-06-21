@@ -1,3 +1,10 @@
+## Memory overhead benchmark for key-value data structures:
+
+Results interpretation:
+1. Additional bytes overhead per element
+2. Additional percantage of key size overhead per element
+3. Additional percentage of value size overhead per element
+
 ```
 Results for BTreeMap:
     > 4.61 + 78.4% K + 78.4% V
