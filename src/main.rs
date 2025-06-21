@@ -1,12 +1,15 @@
+pub mod regression;
+
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::array::from_fn;
 use std::collections::{BTreeMap, HashMap};
 use std::{fs, mem};
 use std::hash::Hash;
 use std::hint::black_box;
 use std::io::Write;
+use std::ops::Deref;
 use std::sync::atomic::{compiler_fence, AtomicUsize, Ordering};
 use indexmap::IndexMap;
+use crate::regression::{linear_regression, regression_error};
 
 #[global_allocator]
 static GLOBAL:  CountingAllocator = CountingAllocator;
@@ -142,6 +145,21 @@ impl TestResults {
             file.write_all(format!("{},{},{},{}\n",length, k_sz, v_sz, ovh_size).as_bytes()).unwrap()
         }
     }
+    
+    pub fn print_results(&mut self) {
+        println!("Results for {}:", self.name);
+        let data = self.res.iter().map(|(&(len, k_sz, v_sz), &ovh)| {
+            let x = len as f64;
+            let y = (len * k_sz) as f64;
+            let z = (len * v_sz) as f64;
+            let u = ovh as f64;
+            (x, y, z, u)
+        }).collect::<Vec<_>>();
+        let (c, k, v) = linear_regression(&data);
+        let (ce, ke, ve) = regression_error(&data, (c, k, v));
+        println!(" > {c:.2} + {:.1}% K + {:.1}% V", k * 100.0, v*100.0);
+        println!(" +-{ce:.2}  +-{:.1}%  +-{:.1}%", ke * 100.0, ve * 100.0)
+    }
 }
 
 fn main() {
@@ -154,7 +172,7 @@ fn main() {
     let mut btreemap_res = TestResults::new("BTreeMap".to_string());
     let mut hashmap_res = TestResults::new("HashMap".to_string());
     let mut indexmap_res = TestResults::new("IndexMap".to_string());
-    
+
     macro_rules! run_tests {
         ($sizes:expr, $tracker:expr, $k_sz:literal, $v_sz:literal) => {
             {
@@ -169,23 +187,36 @@ fn main() {
 
     let sizes_1 = (0..256).step_by(5);
     let sizes_2 = (0..256).step_by(5).chain((500..65_000).step_by(2_000));
-    run_tests!{sizes_1, tracker, 1, 1};
-    run_tests!{sizes_1, tracker, 1, 2};
-    run_tests!{sizes_1, tracker, 1, 4};
-    run_tests!{sizes_1, tracker, 1, 8};
-    run_tests!(sizes_2, tracker, 2, 1);
-    run_tests!(sizes_2, tracker, 2, 2);
-    run_tests!(sizes_2, tracker, 2, 4);
-    run_tests!(sizes_2, tracker, 2, 8);
-    run_tests!(sizes_2, tracker, 4, 1);
-    run_tests!(sizes_2, tracker, 4, 2);
-    run_tests!(sizes_2, tracker, 4, 4);
-    run_tests!(sizes_2, tracker, 4, 8);
+    // Big range tests
+    run_tests!(sizes_1, tracker, 1, 8);
+    run_tests!(sizes_1, tracker, 1, 16);
+    run_tests!(sizes_1, tracker, 1, 32);
+    run_tests!(sizes_2, tracker, 8, 8);
+    run_tests!(sizes_2, tracker, 8, 16);
+    run_tests!(sizes_2, tracker, 8, 32);
+    run_tests!(sizes_2, tracker, 16, 8);
+    run_tests!(sizes_2, tracker, 16, 16);
+    run_tests!(sizes_2, tracker, 16, 32);
     
+    // // Small range tests
+    // run_tests!(sizes_1, tracker, 1, 1);
+    // run_tests!(sizes_1, tracker, 1, 2);
+    // run_tests!(sizes_1, tracker, 1, 4);
+    // run_tests!(sizes_2, tracker, 2, 1);
+    // run_tests!(sizes_2, tracker, 2, 2);
+    // run_tests!(sizes_2, tracker, 2, 4);
+    // run_tests!(sizes_2, tracker, 4, 1);
+    // run_tests!(sizes_2, tracker, 4, 2);
+    // run_tests!(sizes_2, tracker, 4, 4);
+
+    btreemap_res.print_results();
+    indexmap_res.print_results();
+    hashmap_res.print_results();
 
     btreemap_res.save_csv();
     indexmap_res.save_csv();
     hashmap_res.save_csv();
+    
     
     tracker.print("END");
 }
@@ -197,7 +228,6 @@ fn test_structure<S: DataStruct>(tracker: &Tracker, len: usize, el_size: usize) 
     compiler_fence(Ordering::AcqRel);
     let bytes = tracker.allocated() - before;
     let ovh = bytes - (len * el_size);
-    // println!("{} - {} : {}b ({}%)", len, len * el_size, ovh, (bytes as f32 / (len * el_size) as f32 - 1.0) * 100.0);
-    println!("{} - {}", len * el_size, bytes);
+    // println!("{} - {}", len * el_size, bytes);
     ovh
 }
