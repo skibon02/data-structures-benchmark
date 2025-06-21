@@ -1,0 +1,11 @@
+[package]
+name = "data-structures-benchmark"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+indexmap = "2.9.0"
+jemalloc-ctl = "0.5.4"
+jemallocator = { version = "0.5.4", features = ["stats"] }
+slab = "0.4.10"
+slotmap = "1.0.7"
